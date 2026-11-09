@@ -23,7 +23,7 @@
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <Grid x:Name="StableWordBlock" Grid.Row="0" Height="226">
+            <Grid x:Name="StableWordBlock" Grid.Row="0" MinHeight="226">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="28" />
                     <RowDefinition Height="*" />
@@ -38,6 +38,15 @@
                                    FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource Brush.InkMuted}" />
                         <Rectangle Width="28" Height="3" RadiusX="1.5" RadiusY="1.5" HorizontalAlignment="Center"
                                    VerticalAlignment="Center" Fill="{StaticResource Brush.Border}" />
+                        <StackPanel HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    Visibility="{Binding HasDailyProgress, Converter={StaticResource BoolVisibility}}"
+                                    AutomationProperties.Name="今日学习进度">
+                            <TextBlock Text="{Binding DailyProgressText, StringFormat=今日 {0}, Mode=OneWay}" FontSize="11"
+                                       Foreground="{StaticResource Brush.InkMuted}" HorizontalAlignment="Right" />
+                            <ProgressBar Height="3" MinWidth="86" Maximum="1" Value="{Binding DailyProgressRatio, Mode=OneWay}"
+                                         Foreground="{StaticResource Brush.Accent}" Background="Transparent" BorderThickness="0"
+                                         Margin="0,3,0,0" />
+                        </StackPanel>
                     </Grid>
                 </Border>
 
@@ -64,7 +73,7 @@
                                AutomationProperties.Name="{Binding Phonetic, StringFormat=当前单词音标 {0}}"
                                AutomationProperties.HelpText="{Binding Phonetic}" />
                     <TextBlock x:Name="ChineseText" Grid.Row="2" Text="{Binding Chinese}" Margin="1,10,0,0"
-                               FontSize="16" FontWeight="Medium" TextWrapping="Wrap" MaxHeight="46"
+                               FontSize="16" FontWeight="Medium" TextWrapping="Wrap" MaxHeight="66"
                                AutomationProperties.Name="{Binding Chinese, StringFormat=当前单词中文释义 {0}}"
                                AutomationProperties.HelpText="{Binding Chinese}" />
                     <StackPanel Grid.Row="3" VerticalAlignment="Bottom">

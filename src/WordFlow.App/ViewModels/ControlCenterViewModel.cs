@@ -84,7 +84,7 @@ public sealed class ControlCenterViewModel : INotifyPropertyChanged, IDisposable
     public ThemeSettingsViewModel Theme { get; }
     public LearningHistoryViewModel? LearningHistory { get; }
     public ObservableCollection<VocabularyWord> VocabularyResults { get; } = [];
-    public ObservableCollection<ConfusableItem> ConfusableResults { get; } = [];
+    public ObservableCollection<ConfusableRow> ConfusableResults { get; } = [];
     public ObservableCollection<SlashedWordRow> SlashedWords { get; } = [];
     public ObservableCollection<DailyTrendPoint> SevenDayTrend { get; } = [];
     public ObservableCollection<WordSuggestion> VocabularySuggestions => vocabularySuggestion.Items;
@@ -129,10 +129,12 @@ public sealed class ControlCenterViewModel : INotifyPropertyChanged, IDisposable
     public string LibraryStatus { get => libraryStatus; private set => Set(ref libraryStatus, value); }
     public string ConfusableStatus { get => confusableStatus; private set => Set(ref confusableStatus, value); }
     public string SlashedStatus { get => slashedStatus; private set => Set(ref slashedStatus, value); }
-    public int SlashedPage { get => slashedPage; private set => Set(ref slashedPage, value); }
+    public int SlashedPage { get => slashedPage; private set { if (Set(ref slashedPage, value)) { Raise(nameof(SlashedRange)); Raise(nameof(CanGoPreviousSlashed)); Raise(nameof(CanGoNextSlashed)); } } }
     public int SlashedPageSize { get => slashedPageSize; set { if (Set(ref slashedPageSize, value)) { SlashedPage = 1; Raise(nameof(SlashedRange)); } } }
-    public int SlashedCount { get => slashedCount; private set { if (Set(ref slashedCount, value)) { Raise(nameof(SlashedRange)); Raise(nameof(SlashedPageCount)); } } }
+    public int SlashedCount { get => slashedCount; private set { if (Set(ref slashedCount, value)) { Raise(nameof(SlashedRange)); Raise(nameof(SlashedPageCount)); Raise(nameof(CanGoNextSlashed)); } } }
     public int SlashedPageCount => Math.Max(1, (int)Math.Ceiling((double)SlashedCount / Math.Max(1, SlashedPageSize)));
+    public bool CanGoPreviousSlashed => SlashedPage > 1;
+    public bool CanGoNextSlashed => SlashedPage < SlashedPageCount;
     public string SlashedRange => SlashedCount == 0 ? "0 条" : $"第 {(SlashedPage - 1) * SlashedPageSize + 1}–{Math.Min(SlashedPage * SlashedPageSize, SlashedCount)} 条，共 {SlashedCount} 条";
     public SlashedWordRow? SelectedSlashedWord { get => selectedSlashedWord; set => Set(ref selectedSlashedWord, value); }
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -219,7 +221,7 @@ public sealed class ControlCenterViewModel : INotifyPropertyChanged, IDisposable
             ConfusableResults.Clear();
             if (result is Success<IReadOnlyList<ConfusableItem>> success)
             {
-                foreach (var item in success.Value) ConfusableResults.Add(item);
+                foreach (var item in success.Value) ConfusableResults.Add(new ConfusableRow(item));
                 ConfusableStatus = success.Value.Count == 0 ? "暂无可靠易混词" : $"{word.Lemma} · {success.Value.Count} 条已验证关系";
             }
             else ConfusableStatus = result switch { StorageFailure<IReadOnlyList<ConfusableItem>> failure => failure.Message, NotFound<IReadOnlyList<ConfusableItem>> missing => missing.Message, _ => "无法读取易混关系" };
@@ -253,20 +255,11 @@ public sealed class ControlCenterViewModel : INotifyPropertyChanged, IDisposable
     public async Task LoadSlashedPageAsync(CancellationToken ct = default)
     {
         if (learningStore is null || vocabulary is null) { SlashedStatus = "学习记录服务尚未连接"; return; }
-        var allCards = new List<CardState>();
-        int offset = 0;
-        while (true)
-        {
-            var page = await learningStore.GetCardsAsync(new PageRequest(offset, 500), ct).ConfigureAwait(false);
-            allCards.AddRange(page.Items);
-            offset += page.Items.Count;
-            if (page.HasMore != true || page.Items.Count == 0) break;
-        }
-        var slashed = allCards.Where(card => card.Slash.IsSlashed).OrderByDescending(card => card.Slash.SlashedAt).ToArray();
-        SlashedCount = slashed.Length;
         int skip = Math.Max(0, (SlashedPage - 1) * SlashedPageSize);
+        var page = await learningStore.GetSlashedCardsAsync(new PageRequest(skip, SlashedPageSize), ct).ConfigureAwait(false);
+        SlashedCount = page.TotalCount;
         var rows = new List<SlashedWordRow>();
-        foreach (var card in slashed.Skip(skip).Take(SlashedPageSize))
+        foreach (var card in page.Items)
         {
             var word = await vocabulary.GetWordAsync(card.Id, ct).ConfigureAwait(false);
             rows.Add(new SlashedWordRow(card.Id, word?.Lemma ?? card.Id.ToString("D"), word?.Phonetic ?? "", word?.Chinese ?? "", card.Slash.SlashedAt));

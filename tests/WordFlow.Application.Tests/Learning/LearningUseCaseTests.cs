@@ -398,6 +398,12 @@ public sealed class LearningUseCaseTests
             var items = ordered.Skip(page.Offset).Take(page.Limit).ToArray();
             return Task.FromResult(new Page<CardState>(items, ordered.Length, page.Offset + items.Length < ordered.Length, "cards:v1"));
         }
+        public Task<Page<CardState>> GetSlashedCardsAsync(PageRequest page, CancellationToken ct)
+        {
+            var slashed = Cards.Values.Where(x => x.Slash.IsSlashed).OrderByDescending(x => x.Slash.SlashedAt).ThenBy(x => x.Id).ToArray();
+            var items = slashed.Skip(page.Offset).Take(page.Limit).ToArray();
+            return Task.FromResult(new Page<CardState>(items, slashed.Length, page.Offset + items.Length < slashed.Length, "slashed:v1"));
+        }
         public Task<ExhaustionProbe> ProbeCardsEndAsync(int offset, string snapshotId, CancellationToken ct) =>
             Task.FromResult(new ExhaustionProbe(offset >= Cards.Count, "cards:v1"));
 

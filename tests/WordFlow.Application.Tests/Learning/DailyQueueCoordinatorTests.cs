@@ -290,6 +290,12 @@ public sealed class DailyQueueCoordinatorTests
             var items = all.Skip(page.Offset).Take(page.Limit).ToArray();
             return Task.FromResult(new Page<CardState>(items, all.Length, page.Offset + items.Length < all.Length, "cards:test"));
         }
+        public Task<Page<CardState>> GetSlashedCardsAsync(PageRequest page, CancellationToken ct)
+        {
+            var slashed = cards.Values.Where(x => x.Slash.IsSlashed).OrderByDescending(x => x.Slash.SlashedAt).ThenBy(x => x.Id).ToArray();
+            var items = slashed.Skip(page.Offset).Take(page.Limit).ToArray();
+            return Task.FromResult(new Page<CardState>(items, slashed.Length, page.Offset + items.Length < slashed.Length, "slashed:test"));
+        }
         public Task<ExhaustionProbe> ProbeCardsEndAsync(int offset, string snapshotId, CancellationToken ct) =>
             Task.FromResult(new ExhaustionProbe(offset >= cards.Count, "cards:test"));
         public Task<ReviewEvent?> GetLatestUndoableEventAsync(CancellationToken ct) =>

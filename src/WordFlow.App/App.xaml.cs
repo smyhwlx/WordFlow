@@ -165,7 +165,8 @@ public partial class App : System.Windows.Application
             cardActionHost,
             pronunciation,
             dailyPlanSettings,
-            services.GetRequiredService<LearningDataChangeNotifier>());
+            services.GetRequiredService<LearningDataChangeNotifier>(),
+            services.GetRequiredService<ILearningProgressReader>());
         var paths = services.GetRequiredService<AppPaths>();
         themeSettings = services.GetRequiredService<ThemeSettingsViewModel>();
         await themeSettings.RestoreAsync(cancellationToken);

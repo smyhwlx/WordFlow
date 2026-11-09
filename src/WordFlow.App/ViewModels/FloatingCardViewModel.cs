@@ -30,8 +30,10 @@ public sealed class FloatingCardViewModel : INotifyPropertyChanged, IDisposable
     private readonly IFloatingCardActionHost actionHost;
     private readonly ICardPronunciationPlayback? pronunciation;
     private readonly LearningDataChangeNotifier? dataChanges;
+    private readonly ILearningProgressReader? progressReader;
     private readonly TimeProvider timeProvider;
     private NextCard? current;
+    private int reviewedToday;
     private string? errorMessage;
     private string accessibleStatus = "准备学习";
     private bool isBusy;
@@ -54,7 +56,8 @@ public sealed class FloatingCardViewModel : INotifyPropertyChanged, IDisposable
         ICardPronunciationPlayback? pronunciation = null,
         Func<DailyPlan>? planProvider = null,
         TimeProvider? timeProvider = null,
-        LearningDataChangeNotifier? dataChanges = null)
+        LearningDataChangeNotifier? dataChanges = null,
+        ILearningProgressReader? progressReader = null)
     {
         this.operations = operations ?? throw new ArgumentNullException(nameof(operations));
         Synonyms = synonyms ?? throw new ArgumentNullException(nameof(synonyms));
@@ -63,6 +66,7 @@ public sealed class FloatingCardViewModel : INotifyPropertyChanged, IDisposable
         this.actionHost = actionHost ?? FloatingCardActionHost.Unavailable;
         this.pronunciation = pronunciation;
         this.dataChanges = dataChanges;
+        this.progressReader = progressReader;
         this.timeProvider = timeProvider ?? TimeProvider.System;
         this.planProvider = planProvider ?? (() => plan ?? DailyPlan.Default);
         shortcutLabels.PropertyChanged += OnShortcutLabelsChanged;
@@ -114,6 +118,13 @@ public sealed class FloatingCardViewModel : INotifyPropertyChanged, IDisposable
         }
     }
     public bool HasError => !string.IsNullOrWhiteSpace(ErrorMessage);
+
+    /// <summary>Today's learning progress shown in the card header. Target comes from the daily plan.</summary>
+    public int ReviewedToday { get => reviewedToday; private set => SetField(ref reviewedToday, value); }
+    public int DailyTarget => planProvider().NewLimit + planProvider().SoftReviewLimit;
+    public double DailyProgressRatio => DailyTarget == 0 ? 0 : Math.Clamp((double)ReviewedToday / DailyTarget, 0, 1);
+    public bool HasDailyProgress => DailyTarget > 0;
+    public string DailyProgressText => DailyTarget == 0 ? "" : $"{ReviewedToday} / {DailyTarget}";
     public string AccessibleStatus
     {
         get => accessibleStatus;
@@ -170,6 +181,7 @@ public sealed class FloatingCardViewModel : INotifyPropertyChanged, IDisposable
                     SetFailure("无法加载学习卡", failure.Message);
                     break;
             }
+            await RefreshDailyProgressAsync(linked.Token);
         }
         catch (OperationCanceledException) { if (!disposed) AccessibleStatus = "操作已取消"; }
         catch (Exception exception) { SetFailure("无法加载学习卡", exception.Message); }
@@ -256,6 +268,7 @@ public sealed class FloatingCardViewModel : INotifyPropertyChanged, IDisposable
                 case NotFound<CardState> failure: SetFailure("撤销失败", failure.Message); break;
                 case Conflict<CardState> failure: SetFailure("撤销失败", failure.Message); break;
             }
+            if (result is Success<CardState>) await RefreshDailyProgressAsync(linked.Token);
         }
         catch (OperationCanceledException) { if (!disposed) AccessibleStatus = "撤销已取消"; }
         catch (Exception exception) { if (!disposed) SetFailure("撤销失败", exception.Message); }
@@ -353,10 +366,28 @@ public sealed class FloatingCardViewModel : INotifyPropertyChanged, IDisposable
                 case NotFound<LearningTransition> failure: SetFailure("学习记录未保存", failure.Message); break;
                 case Conflict<LearningTransition> failure: SetFailure("学习记录未保存", failure.Message); break;
             }
+            if (result is Success<LearningTransition>) await RefreshDailyProgressAsync(linked.Token);
         }
         catch (OperationCanceledException) { if (!disposed) AccessibleStatus = "学习操作已取消，当前卡片未改变"; }
         catch (Exception exception) { if (!disposed) SetFailure("学习记录未保存", exception.Message); }
         finally { if (!disposed) IsBusy = false; }
+    }
+
+    private async Task RefreshDailyProgressAsync(CancellationToken ct = default)
+    {
+        if (progressReader is null || disposed) return;
+        try
+        {
+            var today = DateOnly.FromDateTime(timeProvider.GetLocalNow().DateTime);
+            var statistics = await progressReader.GetDailyStatisticsAsync(today, ct);
+            if (disposed) return;
+            ReviewedToday = statistics.ReviewedToday;
+            OnPropertyChanged(nameof(DailyProgressRatio));
+            OnPropertyChanged(nameof(DailyProgressText));
+            OnPropertyChanged(nameof(HasDailyProgress));
+        }
+        catch (OperationCanceledException) { }
+        catch { /* Progress is informational; never block the learning flow on it. */ }
     }
 
     private async Task ToggleDrawerAsync(RelationDrawerViewModel drawer, CancellationToken ct = default)

@@ -50,6 +50,12 @@ public interface ILearningStore
 
     Task<Page<CardState>> GetCardsAsync(PageRequest page, CancellationToken ct);
 
+    /// <summary>
+    /// Reads one page of slashed cards, most recently slashed first, without scanning
+    /// the whole card table. <see cref="Page{T}.TotalCount"/> carries the slashed total.
+    /// </summary>
+    Task<Page<CardState>> GetSlashedCardsAsync(PageRequest page, CancellationToken ct);
+
     Task<ExhaustionProbe> ProbeCardsEndAsync(int offset, string snapshotId, CancellationToken ct);
 
     Task<ReviewEvent?> GetLatestUndoableEventAsync(CancellationToken ct);

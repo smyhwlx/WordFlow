@@ -731,6 +731,52 @@ public sealed class SqliteLearningStoreTests : IDisposable
         return factory;
     }
 
+    [Fact]
+    public async Task GetSlashedCards_pages_only_slashed_cards_most_recent_first()
+    {
+        var factory = await CreateMigratedFactoryAsync(Database("slashed-paging.db"));
+        var store = new SqliteLearningStore(factory);
+        // Three cards get slashed at different times; a fourth card is never slashed.
+        var slashedFirst = LearningActions.Slash(InitialCard(), Now.AddDays(-3));
+        var slashedMiddle = LearningActions.Slash(InitialCard(), Now.AddDays(-1));
+        var slashedLast = LearningActions.Slash(InitialCard(), Now);
+        await InsertCardStateAsync(factory, Id(701), slashedFirst);
+        await InsertCardStateAsync(factory, Id(702), slashedMiddle);
+        await InsertCardStateAsync(factory, Id(703), slashedLast);
+        await InsertCardStateAsync(factory, Id(704), new CardState(Id(704), null, Now));
+
+        var firstPage = await store.GetSlashedCardsAsync(new PageRequest(0, 2), default);
+        var secondPage = await store.GetSlashedCardsAsync(new PageRequest(2, 2), default);
+
+        Assert.Equal(3, firstPage.TotalCount);
+        Assert.True(firstPage.HasMore);
+        Assert.Equal(Id(703), firstPage.Items[0].Id);
+        Assert.Equal(Id(702), firstPage.Items[1].Id);
+        Assert.Equal(3, secondPage.TotalCount);
+        Assert.False(secondPage.HasMore);
+        Assert.Equal(Id(701), Assert.Single(secondPage.Items).Id);
+    }
+
+    private static async Task InsertCardStateAsync(SqliteConnectionFactory factory, Guid cardId, CardState card)
+    {
+        await using var connection = await factory.OpenUserAsync(default);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO card_state(card_id,difficulty,stability_days,last_review_at_utc,due_at_utc,is_slashed,slashed_at_utc,restored_at_utc,same_day_failure_count,failure_day_utc,hard_word_protected_until_utc,last_event_id)
+            VALUES($cardId,$difficulty,$stability,$lastReview,$due,$slashed,$slashedAt,$restored,0,NULL,NULL,$lastEvent)
+            """;
+        command.Parameters.AddWithValue("$cardId", cardId.ToString("D"));
+        command.Parameters.AddWithValue("$difficulty", (object?)(card.MemoryState is null ? null : card.MemoryState.Difficulty) ?? DBNull.Value);
+        command.Parameters.AddWithValue("$stability", (object?)(card.MemoryState is null ? null : card.MemoryState.StabilityDays) ?? DBNull.Value);
+        command.Parameters.AddWithValue("$lastReview", (object?)(card.MemoryState?.LastReviewAt.UtcDateTime.ToString("O")) ?? DBNull.Value);
+        command.Parameters.AddWithValue("$due", card.DueAt.UtcDateTime.ToString("O"));
+        command.Parameters.AddWithValue("$slashed", card.Slash.IsSlashed ? 1 : 0);
+        command.Parameters.AddWithValue("$slashedAt", (object?)(card.Slash.SlashedAt?.UtcDateTime.ToString("O")) ?? DBNull.Value);
+        command.Parameters.AddWithValue("$restored", (object?)(card.Slash.RestoredAt?.UtcDateTime.ToString("O")) ?? DBNull.Value);
+        command.Parameters.AddWithValue("$lastEvent", Guid.NewGuid().ToString("D"));
+        await command.ExecuteNonQueryAsync(default);
+    }
+
     private static ReviewEvent Review(Guid eventId, CardState before, Rating rating) =>
         new LearningActions(new Fsrs6Scheduler(), new FixedTimeProvider(Now)).Review(eventId, before, rating);
 

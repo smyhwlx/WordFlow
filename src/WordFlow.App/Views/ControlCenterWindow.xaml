@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:sys="clr-namespace:System;assembly=mscorlib"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        xmlns:controls="clr-namespace:WordFlow.App.Views.Controls"
         Title="WordFlow 控制中心" Width="1120" Height="720" MinWidth="920" MinHeight="620"
         WindowStartupLocation="CenterScreen" ShowInTaskbar="True"
         WindowStyle="None" AllowsTransparency="True" ResizeMode="CanResize" Background="Transparent"
@@ -201,7 +202,7 @@
                                                         <Grid>
                                                             <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" MinWidth="92"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                                <TextBlock Text="{Binding Lemma}" FontWeight="SemiBold" FontSize="13"/>
+                                                                <controls:PrefixHighlightTextBlock Text="{Binding Lemma}" Highlight="{Binding Text, ElementName=VocabularySearchBox}" FontSize="13"/>
                                                                 <TextBlock Text="{Binding PhoneticText}" FontSize="11" Foreground="{StaticResource Brush.InkMuted}" Margin="7,1,0,0"/>
                                                             </StackPanel>
                                                             <TextBlock Grid.Column="1" Text="{Binding ChinesePreview}" FontSize="11.5"
@@ -218,9 +219,17 @@
                                 </Canvas>
                             </Grid>
                         </DockPanel>
-                        <DataGrid Grid.Row="1" ItemsSource="{Binding VocabularyResults}" AutoGenerateColumns="False" IsReadOnly="True" Margin="0,14,0,10" HeadersVisibility="Column" GridLinesVisibility="Horizontal" BorderBrush="{StaticResource Brush.Border}">
-                            <DataGrid.Columns><DataGridTextColumn Header="单词" Binding="{Binding Lemma}" Width="1.2*"/><DataGridTextColumn Header="音标" Binding="{Binding Phonetic}" Width="1.1*"/><DataGridTextColumn Header="简体中文释义" Binding="{Binding Chinese}" Width="2.5*"/><DataGridTextColumn Header="词性" Binding="{Binding PrimaryPartOfSpeech}" Width="*"/></DataGrid.Columns>
-                        </DataGrid>
+                        <Grid Grid.Row="1" Margin="0,14,0,10">
+                            <DataGrid ItemsSource="{Binding VocabularyResults}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" GridLinesVisibility="Horizontal" BorderBrush="{StaticResource Brush.Border}">
+                                <DataGrid.Columns><DataGridTextColumn Header="单词" Binding="{Binding Lemma}" Width="1.2*"/><DataGridTextColumn Header="音标" Binding="{Binding Phonetic}" Width="1.1*"/><DataGridTextColumn Header="简体中文释义" Binding="{Binding Chinese}" Width="2.5*"/><DataGridTextColumn Header="词性" Binding="{Binding PrimaryPartOfSpeech}" Width="*"/></DataGrid.Columns>
+                            </DataGrid>
+                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <StackPanel.Style><Style TargetType="StackPanel"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding VocabularyResults.Count}" Value="0"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></StackPanel.Style>
+                                <TextBlock Text="🔍" FontSize="30" HorizontalAlignment="Center"/>
+                                <TextBlock Text="暂无匹配词条" FontWeight="SemiBold" Margin="0,10,0,0" HorizontalAlignment="Center"/>
+                                <TextBlock Text="输入英文单词或中文释义后按 Enter 搜索；输入字母时下方会自动给出前缀候选" Style="{StaticResource Muted}" Margin="0,4,0,0" HorizontalAlignment="Center"/>
+                            </StackPanel>
+                        </Grid>
                         <TextBlock Grid.Row="2" Text="{Binding LibraryStatus}" Style="{StaticResource Muted}"/>
                     </Grid>
 
@@ -259,7 +268,7 @@
                                                         <Grid>
                                                             <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" MinWidth="92"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                                <TextBlock Text="{Binding Lemma}" FontWeight="SemiBold" FontSize="13"/>
+                                                                <controls:PrefixHighlightTextBlock Text="{Binding Lemma}" Highlight="{Binding Text, ElementName=ConfusableSearchBox}" FontSize="13"/>
                                                                 <TextBlock Text="{Binding PhoneticText}" FontSize="11" Foreground="{StaticResource Brush.InkMuted}" Margin="7,1,0,0"/>
                                                             </StackPanel>
                                                             <TextBlock Grid.Column="1" Text="{Binding ChinesePreview}" FontSize="11.5"
@@ -276,9 +285,29 @@
                                 </Canvas>
                             </Grid>
                         </DockPanel>
-                        <DataGrid Grid.Row="1" ItemsSource="{Binding ConfusableResults}" AutoGenerateColumns="False" IsReadOnly="True" Margin="0,14,0,10" HeadersVisibility="Column" GridLinesVisibility="Horizontal" BorderBrush="{StaticResource Brush.Border}">
-                            <DataGrid.Columns><DataGridTextColumn Header="词汇" Binding="{Binding Spelling}" Width="1.2*"/><DataGridTextColumn Header="关系类型" Binding="{Binding RelationType}" Width="*"/><DataGridTextColumn Header="音标" Binding="{Binding Phonetic}" Width="*"/><DataGridTextColumn Header="具体释义" Binding="{Binding Chinese}" Width="1.8*"/><DataGridTextColumn Header="关键差异" Binding="{Binding Contrast}" Width="2*"/></DataGrid.Columns>
-                        </DataGrid>
+                        <Grid Grid.Row="1" Margin="0,14,0,10">
+                            <DataGrid ItemsSource="{Binding ConfusableResults}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" GridLinesVisibility="Horizontal" BorderBrush="{StaticResource Brush.Border}">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="词汇" Binding="{Binding Spelling}" Width="1.2*"/>
+                                    <DataGridTemplateColumn Header="关系类型" Width="*">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <Border Background="{StaticResource Brush.AccentSurface}" CornerRadius="{StaticResource Radius.Badge}" Padding="8,3" HorizontalAlignment="Left" Margin="2" ToolTip="{Binding Contrast}">
+                                                    <TextBlock Text="{Binding RelationLabel}" FontSize="11" Foreground="{StaticResource Brush.AccentStrong}"/>
+                                                </Border>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTextColumn Header="音标" Binding="{Binding Phonetic}" Width="*"/><DataGridTextColumn Header="具体释义" Binding="{Binding Chinese}" Width="1.8*"/><DataGridTextColumn Header="关键差异" Binding="{Binding Contrast}" Width="2*"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <StackPanel.Style><Style TargetType="StackPanel"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding ConfusableResults.Count}" Value="0"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></StackPanel.Style>
+                                <TextBlock Text="🧩" FontSize="30" HorizontalAlignment="Center"/>
+                                <TextBlock Text="暂无易混关系" FontWeight="SemiBold" Margin="0,10,0,0" HorizontalAlignment="Center"/>
+                                <TextBlock Text="输入完整单词，或从输入框下方的前缀候选中选择" Style="{StaticResource Muted}" Margin="0,4,0,0" HorizontalAlignment="Center"/>
+                            </StackPanel>
+                        </Grid>
                         <TextBlock Grid.Row="2" Text="{Binding ConfusableStatus}" Style="{StaticResource Muted}"/>
                     </Grid>
 
@@ -290,7 +319,7 @@
                             <DataGrid.Columns><DataGridTextColumn Header="单词" Binding="{Binding Word}" Width="1.2*"/><DataGridTextColumn Header="音标" Binding="{Binding Phonetic}" Width="1.2*"/><DataGridTextColumn Header="简体中文释义" Binding="{Binding Chinese}" Width="2.5*"/><DataGridTextColumn Header="斩词时间" Binding="{Binding SlashedAt}" Width="1.4*"/></DataGrid.Columns>
                         </DataGrid>
                         <DockPanel Grid.Row="2">
-                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"><Button Content="上一页" Style="{StaticResource Button.Base}" Click="SlashedPrevious_Click"/><Button Content="下一页" Style="{StaticResource Button.Base}" Margin="8,0,0,0" Click="SlashedNext_Click"/><Button Content="取消斩（按计划恢复）" Style="{StaticResource Button.Primary}" Margin="12,0,0,0" Click="RestoreSlashed_Click"/></StackPanel>
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"><Button Content="上一页" Style="{StaticResource Button.Base}" IsEnabled="{Binding CanGoPreviousSlashed}" Click="SlashedPrevious_Click"/><Button Content="下一页" Style="{StaticResource Button.Base}" IsEnabled="{Binding CanGoNextSlashed}" Margin="8,0,0,0" Click="SlashedNext_Click"/><Button Content="取消斩（按计划恢复）" Style="{StaticResource Button.Primary}" Margin="12,0,0,0" Click="RestoreSlashed_Click"/></StackPanel>
                             <StackPanel><TextBlock Text="{Binding SlashedRange}"/><TextBlock Text="{Binding SlashedStatus}" Style="{StaticResource Muted}" Margin="0,3,0,0"/></StackPanel>
                         </DockPanel>
                     </Grid>
@@ -303,7 +332,7 @@
                                 <Border Grid.Column="1" Style="{StaticResource Card}" Margin="0,0,12,0"><StackPanel><TextBlock Text="当前完成率" Style="{StaticResource Muted}"/><TextBlock Text="{Binding ProgressRatio, StringFormat={}{0:P0}}" FontSize="32" FontWeight="SemiBold" Margin="0,8,0,0"/></StackPanel></Border>
                                 <Border Grid.Column="2" Style="{StaticResource Card}"><StackPanel><TextBlock Text="累计已斩" Style="{StaticResource Muted}"/><TextBlock Text="{Binding SlashedTotal}" FontSize="32" FontWeight="SemiBold" Margin="0,8,0,0"/></StackPanel></Border>
                             </Grid>
-                            <Border Style="{StaticResource Card}" Margin="0,16,0,0"><StackPanel><TextBlock Text="七日学习趋势" Style="{StaticResource SectionTitle}"/><ItemsControl ItemsSource="{Binding SevenDayTrend}"><ItemsControl.ItemTemplate><DataTemplate><Grid Margin="0,5"><Grid.ColumnDefinitions><ColumnDefinition Width="110"/><ColumnDefinition Width="*"/><ColumnDefinition Width="50"/></Grid.ColumnDefinitions><TextBlock Text="{Binding Day}"/><ProgressBar Grid.Column="1" Height="9" Maximum="200" Value="{Binding Reviewed, Mode=OneWay}" Margin="12,4"/><TextBlock Grid.Column="2" Text="{Binding Reviewed}" HorizontalAlignment="Right"/></Grid></DataTemplate></ItemsControl.ItemTemplate></ItemsControl></StackPanel></Border>
+                            <Border Style="{StaticResource Card}" Margin="0,16,0,0"><StackPanel><TextBlock Text="七日学习趋势" Style="{StaticResource SectionTitle}"/><ItemsControl ItemsSource="{Binding SevenDayTrend}"><ItemsControl.ItemTemplate><DataTemplate><Grid Margin="0,5"><Grid.ColumnDefinitions><ColumnDefinition Width="110"/><ColumnDefinition Width="*"/><ColumnDefinition Width="50"/></Grid.ColumnDefinitions><TextBlock Text="{Binding Day}"/><ProgressBar Grid.Column="1" Height="9" Maximum="{Binding DataContext.DailyTarget, RelativeSource={RelativeSource AncestorType=Window}, Mode=OneWay}" Value="{Binding Reviewed, Mode=OneWay}" Margin="12,4"/><TextBlock Grid.Column="2" Text="{Binding Reviewed}" HorizontalAlignment="Right"/></Grid></DataTemplate></ItemsControl.ItemTemplate></ItemsControl></StackPanel></Border>
                             <Border Style="{StaticResource Card}" Margin="0,16,0,0"><StackPanel><TextBlock Text="统计口径" Style="{StaticResource SectionTitle}"/><TextBlock Text="统计读取不可变学习事件；不会用当前设置重算历史评分。随着学习历史积累，这里将逐步显示保持率、困难词与更长期趋势。" Style="{StaticResource Muted}"/></StackPanel></Border>
                         </StackPanel>
                     </ScrollViewer>

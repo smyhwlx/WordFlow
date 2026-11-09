@@ -235,6 +235,36 @@ public sealed class SqliteLearningStore : ILearningStore, ILearningProgressReade
         return new Page<CardState>(cards, total, page.Offset + cards.Count < total, $"cards:{snapshotId}");
     }
 
+    public Task<Page<CardState>> GetSlashedCardsAsync(PageRequest page, CancellationToken ct) =>
+        TranslateAsync(() => GetSlashedCardsCoreAsync(page, ct));
+
+    private async Task<Page<CardState>> GetSlashedCardsCoreAsync(PageRequest page, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+        await using var connection = await factory.OpenUserAsync(ct).ConfigureAwait(false);
+        await using var transaction = connection.BeginTransaction(deferred: true);
+        await using var count = connection.CreateCommand();
+        count.Transaction = transaction;
+        count.CommandText = "SELECT COUNT(*) FROM card_state WHERE is_slashed=1";
+        var total = Convert.ToInt32(await count.ExecuteScalarAsync(ct).ConfigureAwait(false));
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "SELECT card_id,difficulty,stability_days,last_review_at_utc,due_at_utc,is_slashed,slashed_at_utc,restored_at_utc,same_day_failure_count,failure_day_utc,hard_word_protected_until_utc FROM card_state WHERE is_slashed=1 ORDER BY slashed_at_utc DESC, card_id LIMIT $limit OFFSET $offset";
+        command.Parameters.AddWithValue("$limit", page.Limit);
+        command.Parameters.AddWithValue("$offset", page.Offset);
+        await using var reader = await command.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        var cards = new List<CardState>();
+        while (await reader.ReadAsync(ct).ConfigureAwait(false)) cards.Add(ReadCard(reader));
+        await reader.DisposeAsync().ConfigureAwait(false);
+        faultInjector?.Invoke(LearningCommitStage.CardPageRowsRead);
+        await using var version = connection.CreateCommand();
+        version.Transaction = transaction;
+        version.CommandText = "SELECT COALESCE(MAX(rowid),0) || ':' || COUNT(*) FROM review_event";
+        var snapshotId = Convert.ToString(await version.ExecuteScalarAsync(ct).ConfigureAwait(false), CultureInfo.InvariantCulture)!;
+        await transaction.CommitAsync(ct).ConfigureAwait(false);
+        return new Page<CardState>(cards, total, page.Offset + cards.Count < total, $"slashed:{snapshotId}");
+    }
+
     public Task<ExhaustionProbe> ProbeCardsEndAsync(int offset, string snapshotId, CancellationToken ct) =>
         TranslateAsync(() => ProbeCardsEndCoreAsync(offset, snapshotId, ct));
 

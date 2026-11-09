@@ -19,7 +19,8 @@ public static class FloatingCardComposition
         IFloatingCardActionHost? actionHost = null,
         ICardPronunciationPlayback? pronunciation = null,
         DailyPlanSettingsViewModel? dailyPlanSettings = null,
-        LearningDataChangeNotifier? dataChanges = null)
+        LearningDataChangeNotifier? dataChanges = null,
+        ILearningProgressReader? progressReader = null)
     {
         ArgumentNullException.ThrowIfNull(getNextCard);
         ArgumentNullException.ThrowIfNull(submitRating);
@@ -44,7 +45,8 @@ public static class FloatingCardComposition
             async (wordId, ct) => MapConfusables(await getConfusables.HandleAsync(new(wordId), ct)), actionHost);
         return new(operations, synonyms, confusables, shortcutLabels, actionHost,
             pronunciation: pronunciation, planProvider: dailyPlanSettings is null ? null : () => dailyPlanSettings.Plan,
-            dataChanges: dataChanges);
+            dataChanges: dataChanges,
+            progressReader: progressReader);
     }
 
     private static UseCaseResult<IReadOnlyList<RelationItemData>> MapSynonyms(
