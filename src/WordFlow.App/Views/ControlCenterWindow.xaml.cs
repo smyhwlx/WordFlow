@@ -51,6 +51,8 @@ public partial class ControlCenterWindow : Window
 
     private async void SelectPage(string page)
     {
+        viewModel.DismissSuggestions(confusable: false);
+        viewModel.DismissSuggestions(confusable: true);
         DashboardPage.Visibility = page == "Dashboard" ? Visibility.Visible : Visibility.Collapsed;
         VocabularyPage.Visibility = page == "Vocabulary" ? Visibility.Visible : Visibility.Collapsed;
         ConfusablesPage.Visibility = page == "Confusables" ? Visibility.Visible : Visibility.Collapsed;
@@ -69,6 +71,7 @@ public partial class ControlCenterWindow : Window
         };
         try
         {
+            if (page is "Vocabulary" or "Confusables") _ = viewModel.PrepareVocabularyAsync();
             if (page == "Slashed") await viewModel.LoadSlashedPageAsync();
             else if (page is "Dashboard" or "Statistics") await viewModel.RefreshProgressAsync();
         }
@@ -174,6 +177,95 @@ public partial class ControlCenterWindow : Window
     {
         try { await viewModel.SearchConfusablesAsync(); }
         catch (Exception ex) { ShowPageError(ex); }
+    }
+
+    private async void VocabularySearch_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape && viewModel.IsVocabularySuggestionOpen)
+        {
+            viewModel.DismissSuggestions(confusable: false);
+            e.Handled = true;
+            return;
+        }
+        if (viewModel.IsVocabularySuggestionOpen && MoveSuggestionSelection(VocabularySuggestionList, e.Key))
+        {
+            e.Handled = true;
+            return;
+        }
+        if (e.Key != Key.Enter) return;
+
+        e.Handled = true;
+        try
+        {
+            if (viewModel.IsVocabularySuggestionOpen && VocabularySuggestionList.SelectedItem is WordSuggestion picked)
+            {
+                await viewModel.CommitVocabularySuggestionAsync(picked);
+                VocabularySearchBox.Focus();
+                return;
+            }
+            await viewModel.SearchVocabularyAsync();
+        }
+        catch (Exception ex) { ShowPageError(ex); }
+    }
+
+    private async void ConfusableSearch_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape && viewModel.IsConfusableSuggestionOpen)
+        {
+            viewModel.DismissSuggestions(confusable: true);
+            e.Handled = true;
+            return;
+        }
+        if (viewModel.IsConfusableSuggestionOpen && MoveSuggestionSelection(ConfusableSuggestionList, e.Key))
+        {
+            e.Handled = true;
+            return;
+        }
+        if (e.Key != Key.Enter) return;
+
+        e.Handled = true;
+        try
+        {
+            if (viewModel.IsConfusableSuggestionOpen && ConfusableSuggestionList.SelectedItem is WordSuggestion picked)
+            {
+                await viewModel.CommitConfusableSuggestionAsync(picked);
+                ConfusableSearchBox.Focus();
+                return;
+            }
+            await viewModel.SearchConfusablesAsync();
+        }
+        catch (Exception ex) { ShowPageError(ex); }
+    }
+
+    private async void VocabularySuggestionList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not ListBox list) return;
+        if (list.ContainerFromElement(e.OriginalSource as DependencyObject) is not ListBoxItem { DataContext: WordSuggestion picked }) return;
+        e.Handled = true;
+        try { await viewModel.CommitVocabularySuggestionAsync(picked); }
+        catch (Exception ex) { ShowPageError(ex); }
+        VocabularySearchBox.Focus();
+    }
+
+    private async void ConfusableSuggestionList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not ListBox list) return;
+        if (list.ContainerFromElement(e.OriginalSource as DependencyObject) is not ListBoxItem { DataContext: WordSuggestion picked }) return;
+        e.Handled = true;
+        try { await viewModel.CommitConfusableSuggestionAsync(picked); }
+        catch (Exception ex) { ShowPageError(ex); }
+        ConfusableSearchBox.Focus();
+    }
+
+    private static bool MoveSuggestionSelection(ListBox list, Key key)
+    {
+        if (key is not (Key.Down or Key.Up) || list.Items.Count == 0) return false;
+        int index = key == Key.Down
+            ? Math.Min(list.SelectedIndex + 1, list.Items.Count - 1)
+            : Math.Max(list.SelectedIndex - 1, 0);
+        list.SelectedIndex = index;
+        list.ScrollIntoView(list.Items[index]);
+        return true;
     }
 
     private async void LoadSlashed_Click(object sender, RoutedEventArgs e)

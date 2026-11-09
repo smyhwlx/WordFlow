@@ -14,7 +14,11 @@ public sealed record DailyTrendPoint(DateOnly Day, int Reviewed);
 
 public sealed class ControlCenterViewModel : INotifyPropertyChanged, IDisposable
 {
+    public const int SuggestionLimit = VocabularyPrefixMatcher.DefaultLimit;
+
     private readonly ILearningProgressReader progressReader;
+    private readonly SuggestionState vocabularySuggestion = new(nameof(IsVocabularySuggestionOpen));
+    private readonly SuggestionState confusableSuggestion = new(nameof(IsConfusableSuggestionOpen));
     private readonly SynchronizationContext? context;
     private readonly TimeProvider clock;
     private readonly IVocabularyRepository? vocabulary;
@@ -23,6 +27,7 @@ public sealed class ControlCenterViewModel : INotifyPropertyChanged, IDisposable
     private readonly RestoreSlashedWords? restoreSlashedWords;
     private readonly LearningDataChangeNotifier? dataChanges;
     private IReadOnlyList<VocabularyWord>? vocabularyCache;
+    private Task<IReadOnlyList<VocabularyWord>>? vocabularyLoad;
     private int reviewedToday;
     private int slashedTotal;
     private bool loading;
@@ -82,6 +87,8 @@ public sealed class ControlCenterViewModel : INotifyPropertyChanged, IDisposable
     public ObservableCollection<ConfusableItem> ConfusableResults { get; } = [];
     public ObservableCollection<SlashedWordRow> SlashedWords { get; } = [];
     public ObservableCollection<DailyTrendPoint> SevenDayTrend { get; } = [];
+    public ObservableCollection<WordSuggestion> VocabularySuggestions => vocabularySuggestion.Items;
+    public ObservableCollection<WordSuggestion> ConfusableSuggestions => confusableSuggestion.Items;
 
     public int ReviewedToday { get => reviewedToday; private set => Set(ref reviewedToday, value); }
     public int SlashedTotal { get => slashedTotal; private set => Set(ref slashedTotal, value); }
@@ -93,8 +100,32 @@ public sealed class ControlCenterViewModel : INotifyPropertyChanged, IDisposable
     public string Version => Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "本地构建";
     public string OfflineStatus => "完全离线 · 数据仅保存在本机";
     public bool AlwaysOnTopEnabled { get => alwaysOnTopEnabled; set => Set(ref alwaysOnTopEnabled, value); }
-    public string VocabularyQuery { get => vocabularyQuery; set => Set(ref vocabularyQuery, value); }
-    public string ConfusableQuery { get => confusableQuery; set => Set(ref confusableQuery, value); }
+
+    public string VocabularyQuery
+    {
+        get => vocabularyQuery;
+        set
+        {
+            if (!Set(ref vocabularyQuery, value)) return;
+            ScheduleSuggestions(vocabularySuggestion, value);
+        }
+    }
+
+    public string ConfusableQuery
+    {
+        get => confusableQuery;
+        set
+        {
+            if (!Set(ref confusableQuery, value)) return;
+            ScheduleSuggestions(confusableSuggestion, value);
+        }
+    }
+
+    public bool IsVocabularySuggestionOpen => vocabularySuggestion.IsOpen;
+    public bool IsConfusableSuggestionOpen => confusableSuggestion.IsOpen;
+    internal Task VocabularySuggestionRefresh => vocabularySuggestion.Pending;
+    internal Task ConfusableSuggestionRefresh => confusableSuggestion.Pending;
+
     public string LibraryStatus { get => libraryStatus; private set => Set(ref libraryStatus, value); }
     public string ConfusableStatus { get => confusableStatus; private set => Set(ref confusableStatus, value); }
     public string SlashedStatus { get => slashedStatus; private set => Set(ref slashedStatus, value); }
@@ -148,8 +179,17 @@ public sealed class ControlCenterViewModel : INotifyPropertyChanged, IDisposable
 
     public Task SaveDailyPlanAsync(CancellationToken ct = default) => DailyPlan.SaveAsync(ct);
 
+    /// <summary>Warms the headword cache so the first keystroke already has candidates.</summary>
+    public async Task PrepareVocabularyAsync(CancellationToken ct = default)
+    {
+        if (vocabulary is null) return;
+        try { await GetVocabularyAsync(ct).ConfigureAwait(false); }
+        catch { /* The explicit search surfaces storage errors; preloading stays silent. */ }
+    }
+
     public async Task SearchVocabularyAsync(CancellationToken ct = default)
     {
+        ClearSuggestions(vocabularySuggestion);
         if (vocabulary is null) { LibraryStatus = "词库服务尚未连接"; return; }
         string query = VocabularyQuery.Trim();
         if (query.Length == 0) { VocabularyResults.Clear(); LibraryStatus = "请输入英文单词或中文释义"; return; }
@@ -167,11 +207,12 @@ public sealed class ControlCenterViewModel : INotifyPropertyChanged, IDisposable
 
     public async Task SearchConfusablesAsync(CancellationToken ct = default)
     {
+        ClearSuggestions(confusableSuggestion);
         if (vocabulary is null || getConfusables is null) { ConfusableStatus = "易混词服务尚未连接"; return; }
         string query = ConfusableQuery.Trim();
         var all = await GetVocabularyAsync(ct).ConfigureAwait(false);
         var word = all.FirstOrDefault(item => string.Equals(item.Lemma, query, StringComparison.OrdinalIgnoreCase));
-        if (word is null) { ConfusableResults.Clear(); ConfusableStatus = "请先输入完整、正确的英文单词"; return; }
+        if (word is null) { ConfusableResults.Clear(); ConfusableStatus = "本地词库中没有完全匹配的词条，请输入完整单词或从下拉候选中选择"; return; }
         var result = await getConfusables.HandleAsync(new GetConfusablesRequest(word.WordId), ct).ConfigureAwait(false);
         Publish(() =>
         {
@@ -183,6 +224,30 @@ public sealed class ControlCenterViewModel : INotifyPropertyChanged, IDisposable
             }
             else ConfusableStatus = result switch { StorageFailure<IReadOnlyList<ConfusableItem>> failure => failure.Message, NotFound<IReadOnlyList<ConfusableItem>> missing => missing.Message, _ => "无法读取易混关系" };
         });
+    }
+
+    /// <summary>Applies a picked suggestion and runs the page search for it.</summary>
+    public async Task CommitVocabularySuggestionAsync(WordSuggestion? suggestion, CancellationToken ct = default)
+    {
+        if (suggestion is null) return;
+        SetVocabularyQuerySilently(suggestion.Lemma);
+        ClearSuggestions(vocabularySuggestion);
+        await SearchVocabularyAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Applies a picked suggestion and loads its confusable relations.</summary>
+    public async Task CommitConfusableSuggestionAsync(WordSuggestion? suggestion, CancellationToken ct = default)
+    {
+        if (suggestion is null) return;
+        SetConfusableQuerySilently(suggestion.Lemma);
+        ClearSuggestions(confusableSuggestion);
+        await SearchConfusablesAsync(ct).ConfigureAwait(false);
+    }
+
+    public void DismissSuggestions(bool confusable)
+    {
+        if (disposed) return;
+        ClearSuggestions(confusable ? confusableSuggestion : vocabularySuggestion);
     }
 
     public async Task LoadSlashedPageAsync(CancellationToken ct = default)
@@ -252,21 +317,102 @@ public sealed class ControlCenterViewModel : INotifyPropertyChanged, IDisposable
         Pronunciation.Dispose();
     }
 
-    private async Task<IReadOnlyList<VocabularyWord>> GetVocabularyAsync(CancellationToken ct)
+    private Task<IReadOnlyList<VocabularyWord>> GetVocabularyAsync(CancellationToken ct)
     {
-        if (vocabularyCache is not null) return vocabularyCache;
-        if (vocabulary is null) return [];
-        var words = new List<VocabularyWord>();
-        int offset = 0;
-        while (true)
+        if (vocabularyCache is not null) return Task.FromResult(vocabularyCache);
+        if (vocabulary is null) return Task.FromResult<IReadOnlyList<VocabularyWord>>([]);
+        // A single in-flight load is shared by every keystroke, so typing cannot fan out
+        // into dozens of page reads against the offline corpus.
+        return vocabularyLoad ??= LoadVocabularyAsync(ct);
+    }
+
+    private async Task<IReadOnlyList<VocabularyWord>> LoadVocabularyAsync(CancellationToken ct)
+    {
+        try
         {
-            var page = await vocabulary.GetWordsAsync(new PageRequest(offset, 500), ct).ConfigureAwait(false);
-            words.AddRange(page.Items.Where(item => item.IsLearningHeadword));
-            offset += page.Items.Count;
-            if (page.HasMore != true || page.Items.Count == 0) break;
+            var words = new List<VocabularyWord>();
+            int offset = 0;
+            while (true)
+            {
+                var page = await vocabulary!.GetWordsAsync(new PageRequest(offset, 500), ct).ConfigureAwait(false);
+                words.AddRange(page.Items.Where(item => item.IsLearningHeadword));
+                offset += page.Items.Count;
+                if (page.HasMore != true || page.Items.Count == 0) break;
+            }
+            vocabularyCache = words;
+            return words;
         }
-        vocabularyCache = words;
-        return words;
+        finally
+        {
+            vocabularyLoad = null;
+        }
+    }
+
+    private void ScheduleSuggestions(SuggestionState state, string? query) =>
+        state.Pending = RefreshSuggestionsAsync(state, query);
+
+    private async Task RefreshSuggestionsAsync(SuggestionState state, string? query)
+    {
+        int generation = ++state.Generation;
+        string needle = (query ?? "").Trim();
+        if (needle.Length == 0 || vocabulary is null)
+        {
+            Publish(() => PublishSuggestions(state, generation, []));
+            return;
+        }
+
+        IReadOnlyList<VocabularyWord> words;
+        try { words = await GetVocabularyAsync(CancellationToken.None).ConfigureAwait(false); }
+        catch { Publish(() => PublishSuggestions(state, generation, [])); return; }
+
+        // Matching happens off the UI thread; only the publish below touches bound state.
+        var matches = VocabularyPrefixMatcher.Match(words, needle, SuggestionLimit);
+        Publish(() => PublishSuggestions(state, generation, matches));
+    }
+
+    private void PublishSuggestions(SuggestionState state, int generation, IReadOnlyList<VocabularyWord> matches)
+    {
+        if (disposed || generation != state.Generation) return;
+        state.Items.Clear();
+        foreach (var word in matches) state.Items.Add(new WordSuggestion(word));
+        SetSuggestionOpen(state, matches.Count > 0);
+    }
+
+    private void ClearSuggestions(SuggestionState state)
+    {
+        state.Generation++;
+        state.Items.Clear();
+        SetSuggestionOpen(state, false);
+    }
+
+    private void SetSuggestionOpen(SuggestionState state, bool open)
+    {
+        if (state.IsOpen == open) return;
+        state.IsOpen = open;
+        Raise(state.OpenProperty);
+    }
+
+    private void SetVocabularyQuerySilently(string value)
+    {
+        if (string.Equals(vocabularyQuery, value, StringComparison.Ordinal)) return;
+        vocabularyQuery = value;
+        Raise(nameof(VocabularyQuery));
+    }
+
+    private void SetConfusableQuerySilently(string value)
+    {
+        if (string.Equals(confusableQuery, value, StringComparison.Ordinal)) return;
+        confusableQuery = value;
+        Raise(nameof(ConfusableQuery));
+    }
+
+    private sealed class SuggestionState(string openProperty)
+    {
+        public string OpenProperty { get; } = openProperty;
+        public ObservableCollection<WordSuggestion> Items { get; } = [];
+        public bool IsOpen { get; set; }
+        public int Generation { get; set; }
+        public Task Pending { get; set; } = Task.CompletedTask;
     }
 
     private void OnDailyPlanChanged(object? sender, PropertyChangedEventArgs args)

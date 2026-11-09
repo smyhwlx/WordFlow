@@ -169,7 +169,55 @@
                     <!-- 词汇库 -->
                     <Grid x:Name="VocabularyPage" Visibility="Collapsed">
                         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-                        <DockPanel><Button DockPanel.Dock="Right" Content="搜索本地词库" Style="{StaticResource Button.Primary}" Click="VocabularySearch_Click"/><TextBox Text="{Binding VocabularyQuery, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource TextBox.Search}" Margin="0,0,12,0" AutomationProperties.Name="搜索词汇"/></DockPanel>
+                        <DockPanel Grid.Row="0" Panel.ZIndex="10">
+                            <Button DockPanel.Dock="Right" Content="搜索本地词库" Style="{StaticResource Button.Primary}" Click="VocabularySearch_Click"/>
+                            <Grid Margin="0,0,12,0">
+                                <TextBox x:Name="VocabularySearchBox"
+                                         Text="{Binding VocabularyQuery, UpdateSourceTrigger=PropertyChanged}"
+                                         Style="{StaticResource TextBox.Search}"
+                                         AutomationProperties.Name="搜索词汇"
+                                         PreviewKeyDown="VocabularySearch_PreviewKeyDown"/>
+                                <!-- 候选下拉：Canvas 不参与测量，避免把搜索栏撑高 -->
+                                <Canvas VerticalAlignment="Top" Panel.ZIndex="100">
+                                    <Border Canvas.Top="39"
+                                            Width="{Binding ActualWidth, ElementName=VocabularySearchBox}"
+                                            Visibility="{Binding IsVocabularySuggestionOpen, Converter={StaticResource BoolVisibility}}"
+                                            Background="{StaticResource Brush.SurfaceRaised}"
+                                            BorderBrush="{StaticResource Brush.ControlBorder}" BorderThickness="1"
+                                            CornerRadius="10" Padding="5" Margin="0,0,0,10">
+                                        <Border.Effect><DropShadowEffect BlurRadius="16" ShadowDepth="4" Opacity="0.14" Color="#25364A"/></Border.Effect>
+                                        <StackPanel>
+                                            <TextBlock Text="前缀候选 · ↑↓ 选择，Enter 确认，Esc 关闭"
+                                                       FontSize="10" Foreground="{StaticResource Brush.InkMuted}" Margin="8,3,8,5"/>
+                                            <ListBox x:Name="VocabularySuggestionList"
+                                                     ItemsSource="{Binding VocabularySuggestions}"
+                                                     ItemContainerStyle="{StaticResource SuggestionItem}"
+                                                     MaxHeight="330" Background="Transparent" BorderThickness="0" Padding="0"
+                                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                                     AutomationProperties.Name="词汇候选"
+                                                     PreviewMouseLeftButtonDown="VocabularySuggestionList_PreviewMouseLeftButtonDown">
+                                                <ListBox.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" MinWidth="92"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                                <TextBlock Text="{Binding Lemma}" FontWeight="SemiBold" FontSize="13"/>
+                                                                <TextBlock Text="{Binding PhoneticText}" FontSize="11" Foreground="{StaticResource Brush.InkMuted}" Margin="7,1,0,0"/>
+                                                            </StackPanel>
+                                                            <TextBlock Grid.Column="1" Text="{Binding ChinesePreview}" FontSize="11.5"
+                                                                       Foreground="{StaticResource Brush.InkMuted}" TextTrimming="CharacterEllipsis"
+                                                                       Margin="12,0,2,0" VerticalAlignment="Center"/>
+                                                        </Grid>
+                                                    </DataTemplate>
+                                                </ListBox.ItemTemplate>
+                                            </ListBox>
+                                            <TextBlock Text="最多显示 20 个候选；输入更多字母可继续收窄"
+                                                       FontSize="10" Foreground="{StaticResource Brush.InkMuted}" Margin="8,5,8,2"/>
+                                        </StackPanel>
+                                    </Border>
+                                </Canvas>
+                            </Grid>
+                        </DockPanel>
                         <DataGrid Grid.Row="1" ItemsSource="{Binding VocabularyResults}" AutoGenerateColumns="False" IsReadOnly="True" Margin="0,14,0,10" HeadersVisibility="Column" GridLinesVisibility="Horizontal" BorderBrush="{StaticResource Brush.Border}">
                             <DataGrid.Columns><DataGridTextColumn Header="单词" Binding="{Binding Lemma}" Width="1.2*"/><DataGridTextColumn Header="音标" Binding="{Binding Phonetic}" Width="1.1*"/><DataGridTextColumn Header="简体中文释义" Binding="{Binding Chinese}" Width="2.5*"/><DataGridTextColumn Header="词性" Binding="{Binding PrimaryPartOfSpeech}" Width="*"/></DataGrid.Columns>
                         </DataGrid>
@@ -179,7 +227,55 @@
                     <!-- 易混词 -->
                     <Grid x:Name="ConfusablesPage" Visibility="Collapsed">
                         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-                        <DockPanel><Button DockPanel.Dock="Right" Content="查找易混关系" Style="{StaticResource Button.Primary}" Click="ConfusableSearch_Click"/><TextBox Text="{Binding ConfusableQuery, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource TextBox.Search}" Margin="0,0,12,0" AutomationProperties.Name="搜索易混词"/></DockPanel>
+                        <DockPanel Grid.Row="0" Panel.ZIndex="10">
+                            <Button DockPanel.Dock="Right" Content="查找易混关系" Style="{StaticResource Button.Primary}" Click="ConfusableSearch_Click"/>
+                            <Grid Margin="0,0,12,0">
+                                <TextBox x:Name="ConfusableSearchBox"
+                                         Text="{Binding ConfusableQuery, UpdateSourceTrigger=PropertyChanged}"
+                                         Style="{StaticResource TextBox.Search}"
+                                         AutomationProperties.Name="搜索易混词"
+                                         PreviewKeyDown="ConfusableSearch_PreviewKeyDown"/>
+                                <!-- 候选下拉：Canvas 不参与测量，避免把搜索栏撑高 -->
+                                <Canvas VerticalAlignment="Top" Panel.ZIndex="100">
+                                    <Border Canvas.Top="39"
+                                            Width="{Binding ActualWidth, ElementName=ConfusableSearchBox}"
+                                            Visibility="{Binding IsConfusableSuggestionOpen, Converter={StaticResource BoolVisibility}}"
+                                            Background="{StaticResource Brush.SurfaceRaised}"
+                                            BorderBrush="{StaticResource Brush.ControlBorder}" BorderThickness="1"
+                                            CornerRadius="10" Padding="5" Margin="0,0,0,10">
+                                        <Border.Effect><DropShadowEffect BlurRadius="16" ShadowDepth="4" Opacity="0.14" Color="#25364A"/></Border.Effect>
+                                        <StackPanel>
+                                            <TextBlock Text="前缀候选 · ↑↓ 选择，Enter 确认，Esc 关闭"
+                                                       FontSize="10" Foreground="{StaticResource Brush.InkMuted}" Margin="8,3,8,5"/>
+                                            <ListBox x:Name="ConfusableSuggestionList"
+                                                     ItemsSource="{Binding ConfusableSuggestions}"
+                                                     ItemContainerStyle="{StaticResource SuggestionItem}"
+                                                     MaxHeight="330" Background="Transparent" BorderThickness="0" Padding="0"
+                                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                                     AutomationProperties.Name="易混词候选"
+                                                     PreviewMouseLeftButtonDown="ConfusableSuggestionList_PreviewMouseLeftButtonDown">
+                                                <ListBox.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" MinWidth="92"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                                <TextBlock Text="{Binding Lemma}" FontWeight="SemiBold" FontSize="13"/>
+                                                                <TextBlock Text="{Binding PhoneticText}" FontSize="11" Foreground="{StaticResource Brush.InkMuted}" Margin="7,1,0,0"/>
+                                                            </StackPanel>
+                                                            <TextBlock Grid.Column="1" Text="{Binding ChinesePreview}" FontSize="11.5"
+                                                                       Foreground="{StaticResource Brush.InkMuted}" TextTrimming="CharacterEllipsis"
+                                                                       Margin="12,0,2,0" VerticalAlignment="Center"/>
+                                                        </Grid>
+                                                    </DataTemplate>
+                                                </ListBox.ItemTemplate>
+                                            </ListBox>
+                                            <TextBlock Text="最多显示 20 个候选；输入更多字母可继续收窄"
+                                                       FontSize="10" Foreground="{StaticResource Brush.InkMuted}" Margin="8,5,8,2"/>
+                                        </StackPanel>
+                                    </Border>
+                                </Canvas>
+                            </Grid>
+                        </DockPanel>
                         <DataGrid Grid.Row="1" ItemsSource="{Binding ConfusableResults}" AutoGenerateColumns="False" IsReadOnly="True" Margin="0,14,0,10" HeadersVisibility="Column" GridLinesVisibility="Horizontal" BorderBrush="{StaticResource Brush.Border}">
                             <DataGrid.Columns><DataGridTextColumn Header="词汇" Binding="{Binding Spelling}" Width="1.2*"/><DataGridTextColumn Header="关系类型" Binding="{Binding RelationType}" Width="*"/><DataGridTextColumn Header="音标" Binding="{Binding Phonetic}" Width="*"/><DataGridTextColumn Header="具体释义" Binding="{Binding Chinese}" Width="1.8*"/><DataGridTextColumn Header="关键差异" Binding="{Binding Contrast}" Width="2*"/></DataGrid.Columns>
                         </DataGrid>
